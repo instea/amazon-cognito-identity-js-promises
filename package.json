@@ -1,0 +1,9 @@
+{
+  "name": "amazon-cognito-identity-js-promises",
+  "version": "0.0.1",
+  "description": "Amazon Cognito Identity Provider JavaScript SDK",
+  "main": "index.js",
+  "repository": "git@github.com:instea/amazon-cognito-identity-js-promises.git",
+  "author": "instea.sk",
+  "license": "MIT"
+}
