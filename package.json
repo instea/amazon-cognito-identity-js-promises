@@ -2,10 +2,11 @@
   "name": "amazon-cognito-identity-js-promises",
   "version": "0.0.1",
   "description": "Amazon Cognito Identity Provider JavaScript SDK",
-  "main": "index.js",
+  "main": "lib/index.js",
   "repository": "git@github.com:instea/amazon-cognito-identity-js-promises.git",
   "author": "instea.sk",
   "license": "MIT",
+  "types": "src/index.ts",
   "scripts": {
     "lint": "eslint . --ext .ts --max-warnings 0",
     "build": "swc ./src -d ./lib"
