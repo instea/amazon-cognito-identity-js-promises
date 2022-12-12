@@ -1,3 +1,3 @@
 export default class HelloWorld {
-  private a = 'hello'
+  private b: string = 'hello';
 }
