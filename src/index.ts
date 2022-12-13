@@ -1,13 +1,15 @@
 import {
+  ICognitoUserData as OriginalICognitoUserData,
   IMfaSettings,
   AuthenticationDetails,
   UserData,
+  ICognitoUserPoolData,
   MFAOption,
   NodeCallback,
   CognitoRefreshToken,
   CognitoUserAttribute,
   CognitoUserSession,
-  ISignUpResult,
+  ISignUpResult as OriginalISignUpResult,
   ICognitoUserAttributeData,
   CognitoUser as OriginalCognitoUser,
   CognitoUserPool as OriginalCognitoUserPool,
@@ -15,7 +17,15 @@ import {
 
 export * from 'amazon-cognito-identity-js';
 
-function promisifySimple<R>(fn: NodeCallback<any, R>) {
+type ICognitoUserData = OriginalICognitoUserData & {
+  Pool: CognitoUserPool;
+};
+
+type ISignUpResult = OriginalISignUpResult & {
+  user: CognitoUser;
+};
+
+function promisifySimple<R>(fn: NodeCallback<any, R>): Promise<R> {
   return new Promise<R>((resolve, reject) =>
     fn((err, data) => {
       if (err) {
@@ -40,199 +50,271 @@ function promisifyStructured<R>(fn: StructuredCallback) {
 // FIXME: IAuthenticationCallback.onSuccess contains 2 arguments, for now leaving out second one (userConfirmationNecessary) as it would require interface change
 // FIXME: IAuthenticationCallback (and other structured callback objects) trigger more callbacks like IAuthenticationCallback->newPasswordRequired, mfaRequired, ... This is currently not supported
 
-export class CognitoUserPool extends OriginalCognitoUserPool {
-  public override signUp(
+export class CognitoUserPool {
+  public origPool: OriginalCognitoUserPool;
+
+  constructor(data: ICognitoUserPoolData) {
+    this.origPool = new OriginalCognitoUserPool(data);
+  }
+  public signUp(
     username: string,
     password: string,
     userAttributes: CognitoUserAttribute[],
     validationData: CognitoUserAttribute[]
   ) {
     return promisifySimple<ISignUpResult>(callback =>
-      super.signUp(username, password, userAttributes, validationData, callback)
-    );
+      this.origPool.signUp(
+        username,
+        password,
+        userAttributes,
+        validationData,
+        callback
+      )
+    ).then(result => ({
+      ...result,
+      user: new CognitoUser(null, result.user),
+    }));
   }
-  public override getCurrentUser(): CognitoUser | null {
-    const user = super.getCurrentUser();
+  public getCurrentUser(): CognitoUser | null {
+    const user = this.origPool.getCurrentUser();
     if (!user) {
       return null;
     }
-    Object.setPrototypeOf(user, CognitoUser.prototype);
-    return user as CognitoUser;
+    return new CognitoUser(null, user);
+  }
+  public getClientId() {
+    return this.origPool.getClientId();
+  }
+  public getUserPoolId() {
+    return this.origPool.getUserPoolId();
+  }
+  public getUserPoolName() {
+    return this.origPool.getUserPoolName();
   }
 }
 
-export class CognitoUser extends OriginalCognitoUser {
-  public override getSession(): Promise<CognitoUserSession> {
-    return promisifySimple(cb => super.getSession(cb));
+export class CognitoUser {
+  public origUser: OriginalCognitoUser;
+
+  constructor(data?: ICognitoUserData, originalUser?: OriginalCognitoUser) {
+    if (data) {
+      this.origUser = new OriginalCognitoUser({
+        ...data,
+        Pool: data.Pool.origPool,
+      });
+      return;
+    }
+    if (originalUser) {
+      this.origUser = originalUser;
+      return;
+    }
+    throw new Error('missing constructor arguments');
   }
-  public override refreshSession(
-    refreshToken: CognitoRefreshToken
-  ): Promise<any> {
-    return promisifySimple(cb => super.refreshSession(refreshToken, cb));
+  public getSession(): Promise<CognitoUserSession> {
+    return promisifySimple(cb => this.origUser.getSession(cb));
   }
-  public override authenticateUser(
+  public refreshSession(refreshToken: CognitoRefreshToken): Promise<any> {
+    return promisifySimple(cb =>
+      this.origUser.refreshSession(refreshToken, cb)
+    );
+  }
+  public authenticateUser(
     authenticationDetails: AuthenticationDetails
   ): Promise<CognitoUserSession> {
     return promisifyStructured(cb =>
-      super.authenticateUser(authenticationDetails, cb)
+      this.origUser.authenticateUser(authenticationDetails, cb)
     );
   }
-  public override initiateAuth(
+  public initiateAuth(
     authenticationDetails: AuthenticationDetails
   ): Promise<CognitoUserSession> {
     return promisifyStructured(cb =>
-      super.initiateAuth(authenticationDetails, cb)
+      this.origUser.initiateAuth(authenticationDetails, cb)
     );
   }
-  public override confirmRegistration(
+  public confirmRegistration(
     code: string,
     forceAliasCreation: boolean
   ): Promise<any> {
     return promisifySimple(cb =>
-      super.confirmRegistration(code, forceAliasCreation, cb)
+      this.origUser.confirmRegistration(code, forceAliasCreation, cb)
     );
   }
-  public override sendCustomChallengeAnswer(
+  public sendCustomChallengeAnswer(
     answerChallenge: any
   ): Promise<CognitoUserSession> {
     return promisifyStructured(cb =>
-      super.sendCustomChallengeAnswer(answerChallenge, cb)
+      this.origUser.sendCustomChallengeAnswer(answerChallenge, cb)
     );
   }
-  public override resendConfirmationCode(): Promise<any> {
-    return promisifySimple(cb => super.resendConfirmationCode(cb));
+  public resendConfirmationCode(): Promise<any> {
+    return promisifySimple(cb => this.origUser.resendConfirmationCode(cb));
   }
-  public override changePassword(
+  public changePassword(
     oldPassword: string,
     newPassword: string
   ): Promise<'SUCCESS'> {
     return promisifySimple(cb =>
-      super.changePassword(oldPassword, newPassword, cb)
+      this.origUser.changePassword(oldPassword, newPassword, cb)
     );
   }
-  public override forgotPassword(): Promise<any> {
-    return promisifyStructured(cb => super.forgotPassword(cb));
+  public forgotPassword(): Promise<any> {
+    return promisifyStructured(cb => this.origUser.forgotPassword(cb));
   }
-  public override confirmPassword(
+  public confirmPassword(
     verificationCode: string,
     newPassword: string
   ): Promise<undefined> {
     return promisifyStructured(cb =>
-      super.confirmPassword(verificationCode, newPassword, cb)
+      this.origUser.confirmPassword(verificationCode, newPassword, cb)
     );
   }
-  public override setDeviceStatusRemembered(): Promise<string> {
-    return promisifyStructured(cb => super.setDeviceStatusRemembered(cb));
+  public setDeviceStatusRemembered(): Promise<string> {
+    return promisifyStructured(cb =>
+      this.origUser.setDeviceStatusRemembered(cb)
+    );
   }
-  public override setDeviceStatusNotRemembered(): Promise<string> {
-    return promisifyStructured(cb => super.setDeviceStatusNotRemembered(cb));
+  public setDeviceStatusNotRemembered(): Promise<string> {
+    return promisifyStructured(cb =>
+      this.origUser.setDeviceStatusNotRemembered(cb)
+    );
   }
-  public override getDevice(): Promise<string> {
-    return promisifyStructured(cb => super.getDevice(cb));
+  public getDevice(): Promise<string> {
+    return promisifyStructured(cb => this.origUser.getDevice(cb));
   }
-  public override forgetDevice(): Promise<string> {
-    return promisifyStructured(cb => super.forgetDevice(cb));
+  public forgetDevice(): Promise<string> {
+    return promisifyStructured(cb => this.origUser.forgetDevice(cb));
   }
-  public override forgetSpecificDevice(deviceKey: string): Promise<string> {
-    return promisifyStructured(cb => super.forgetSpecificDevice(deviceKey, cb));
+  public forgetSpecificDevice(deviceKey: string): Promise<string> {
+    return promisifyStructured(cb =>
+      this.origUser.forgetSpecificDevice(deviceKey, cb)
+    );
   }
-  public override sendMFACode(
-    confirmationCode: string
-  ): Promise<CognitoUserSession> {
-    return promisifyStructured(cb => super.sendMFACode(confirmationCode, cb));
+  public sendMFACode(confirmationCode: string): Promise<CognitoUserSession> {
+    return promisifyStructured(cb =>
+      this.origUser.sendMFACode(confirmationCode, cb)
+    );
   }
-  public override listDevices(
+  public listDevices(
     limit: number,
     paginationToken: string | null
   ): Promise<any> {
     return promisifyStructured(cb =>
-      super.listDevices(limit, paginationToken, cb)
+      this.origUser.listDevices(limit, paginationToken, cb)
     );
   }
-  public override completeNewPasswordChallenge(
+  public completeNewPasswordChallenge(
     newPassword: string,
     requiredAttributeData: any
   ): Promise<CognitoUserSession> {
     return promisifyStructured(cb =>
-      super.completeNewPasswordChallenge(newPassword, requiredAttributeData, cb)
+      this.origUser.completeNewPasswordChallenge(
+        newPassword,
+        requiredAttributeData,
+        cb
+      )
     );
   }
-  public override globalSignOut(): Promise<string> {
-    return promisifyStructured(cb => super.globalSignOut(cb));
+  public globalSignOut(): Promise<string> {
+    return promisifyStructured(cb => this.origUser.globalSignOut(cb));
   }
-  public override verifyAttribute(
+  public verifyAttribute(
     attributeName: string,
     confirmationCode: string
   ): Promise<string> {
     return promisifyStructured(cb =>
-      super.verifyAttribute(attributeName, confirmationCode, cb)
+      this.origUser.verifyAttribute(attributeName, confirmationCode, cb)
     );
   }
-  public override getUserAttributes(): Promise<CognitoUserAttribute[]> {
-    return promisifySimple(cb => super.getUserAttributes(cb));
+  public getUserAttributes(): Promise<CognitoUserAttribute[]> {
+    return promisifySimple(cb => this.origUser.getUserAttributes(cb));
   }
-  public override updateAttributes(
+  public updateAttributes(
     attributes: (CognitoUserAttribute | ICognitoUserAttributeData)[]
   ): Promise<string> {
-    return promisifySimple(cb => super.updateAttributes(attributes, cb));
-  }
-  public override deleteAttributes(attributeList: string[]): Promise<string> {
-    return promisifySimple(cb => super.deleteAttributes(attributeList, cb));
-  }
-  public override getAttributeVerificationCode(
-    name: string
-  ): Promise<undefined> {
-    return promisifyStructured(cb =>
-      super.getAttributeVerificationCode(name, cb)
+    return promisifySimple(cb =>
+      this.origUser.updateAttributes(attributes, cb)
     );
   }
-  public override deleteUser(): Promise<string> {
-    return promisifySimple(cb => super.deleteUser(cb));
+  public deleteAttributes(attributeList: string[]): Promise<string> {
+    return promisifySimple(cb =>
+      this.origUser.deleteAttributes(attributeList, cb)
+    );
   }
-  public override enableMFA(): Promise<string> {
-    return promisifySimple(cb => super.enableMFA(cb));
+  public getAttributeVerificationCode(name: string): Promise<undefined> {
+    return promisifyStructured(cb =>
+      this.origUser.getAttributeVerificationCode(name, cb)
+    );
   }
-  public override disableMFA(): Promise<string> {
-    return promisifySimple(cb => super.disableMFA(cb));
+  public deleteUser(): Promise<string> {
+    return promisifySimple(cb => this.origUser.deleteUser(cb));
   }
-  public override getMFAOptions(): Promise<MFAOption[]> {
-    return promisifySimple(cb => super.getMFAOptions(cb));
+  public enableMFA(): Promise<string> {
+    return promisifySimple(cb => this.origUser.enableMFA(cb));
   }
-  public override getUserData(): Promise<UserData> {
-    return promisifySimple(cb => super.getUserData(cb));
+  public disableMFA(): Promise<string> {
+    return promisifySimple(cb => this.origUser.disableMFA(cb));
   }
-  public override associateSoftwareToken(callbacks: {
+  public getMFAOptions(): Promise<MFAOption[]> {
+    return promisifySimple(cb => this.origUser.getMFAOptions(cb));
+  }
+  public getUserData(): Promise<UserData> {
+    return promisifySimple(cb => this.origUser.getUserData(cb));
+  }
+  public associateSoftwareToken(callbacks: {
     associateSecretCode: (secretCode: string) => void;
     onFailure: (err: any) => void;
   }) {
     return promisifyStructured(cb =>
-      super.associateSoftwareToken({
+      this.origUser.associateSoftwareToken({
         associateSecretCode: cb.onSuccess,
         onFailure: cb.onFailure,
       })
     );
   }
-  public override verifySoftwareToken(
-    totpCode: string,
-    friendlyDeviceName: string
-  ) {
+  public verifySoftwareToken(totpCode: string, friendlyDeviceName: string) {
     return promisifyStructured(cb =>
-      super.verifySoftwareToken(totpCode, friendlyDeviceName, cb)
+      this.origUser.verifySoftwareToken(totpCode, friendlyDeviceName, cb)
     );
   }
-  public override setUserMfaPreference(
+  public setUserMfaPreference(
     smsMfaSettings: IMfaSettings | null,
     softwareTokenMfaSettings: IMfaSettings | null
   ): Promise<string> {
     return promisifySimple(cb =>
-      super.setUserMfaPreference(smsMfaSettings, softwareTokenMfaSettings, cb)
+      this.origUser.setUserMfaPreference(
+        smsMfaSettings,
+        softwareTokenMfaSettings,
+        cb
+      )
     );
   }
-  public override sendMFASelectionAnswer(
+  public sendMFASelectionAnswer(
     answerChallenge: string
   ): Promise<CognitoUserSession> {
     return promisifyStructured(cb =>
-      super.sendMFASelectionAnswer(answerChallenge, cb)
+      this.origUser.sendMFASelectionAnswer(answerChallenge, cb)
     );
+  }
+  public signOut() {
+    return promisifySimple(cb => this.origUser.signOut(cb));
+  }
+  public getAuthenticationFlowType() {
+    return this.origUser.getAuthenticationFlowType();
+  }
+  public getCachedDeviceKeyAndPassword() {
+    return this.origUser.getCachedDeviceKeyAndPassword();
+  }
+  public getSignInUserSession() {
+    return this.origUser.getSignInUserSession();
+  }
+  public getUsername() {
+    return this.origUser.getUsername();
+  }
+  public setAuthenticationFlowType(authenticationFlowType: string) {
+    return this.origUser.setAuthenticationFlowType(authenticationFlowType);
+  }
+  public setSignInUserSession(signInUserSession: CognitoUserSession) {
+    return this.origUser.setSignInUserSession(signInUserSession);
   }
 }
