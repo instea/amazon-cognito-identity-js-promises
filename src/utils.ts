@@ -2,7 +2,7 @@ import { NodeCallback } from 'amazon-cognito-identity-js';
 
 export function promisifySimple<R>(fn: NodeCallback<any, R>): Promise<R> {
   return new Promise<R>((resolve, reject) =>
-    fn((err, data) => {
+    fn((err: Error, data: R) => {
       if (err) {
         reject(err);
         return;

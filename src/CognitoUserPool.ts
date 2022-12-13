@@ -37,7 +37,7 @@ export class CognitoUserPool {
       )
     ).then(result => ({
       ...result,
-      user: new CognitoUser(null, result.user),
+      user: new CognitoUser(undefined, result.user),
     }));
   }
   public getCurrentUser(): CognitoUser | null {
@@ -45,7 +45,7 @@ export class CognitoUserPool {
     if (!user) {
       return null;
     }
-    return new CognitoUser(null, user);
+    return new CognitoUser(undefined, user);
   }
   public getClientId() {
     return this.origPool.getClientId();
