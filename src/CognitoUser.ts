@@ -11,13 +11,16 @@ import {
   ICognitoUserAttributeData,
   CognitoUser as OriginalCognitoUser,
   ClientMetadata,
+  ICognitoStorage,
 } from 'amazon-cognito-identity-js';
 
 import { CognitoUserPool } from './CognitoUserPool';
 import { promisifySimple, promisifyStructured } from './utils';
 
-type ICognitoUserData = OriginalICognitoUserData & {
+type ICognitoUserData = {
+  Username: string;
   Pool: CognitoUserPool;
+  Storage?: ICognitoStorage;
 };
 
 // FIXME: IAuthenticationCallback.onSuccess contains 2 arguments, for now leaving out second one (userConfirmationNecessary) as it would require interface change
