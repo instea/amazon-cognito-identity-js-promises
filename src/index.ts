@@ -14,6 +14,7 @@ import {
   CognitoUser as OriginalCognitoUser,
   CognitoUserPool as OriginalCognitoUserPool,
   ClientMetadata,
+  IAuthenticationCallback as OriginalIAuthenticationCallback,
 } from 'amazon-cognito-identity-js';
 
 export * from 'amazon-cognito-identity-js';
@@ -25,6 +26,11 @@ type ICognitoUserData = OriginalICognitoUserData & {
 type ISignUpResult = OriginalISignUpResult & {
   user: CognitoUser;
 };
+
+type IAuthenticationCallback = Omit<
+  OriginalIAuthenticationCallback,
+  'onSuccess' | 'onFailure'
+>;
 
 function promisifySimple<R>(fn: NodeCallback<any, R>): Promise<R> {
   return new Promise<R>((resolve, reject) =>
@@ -48,7 +54,6 @@ function promisifyStructured<R>(fn: StructuredCallback) {
 }
 
 // FIXME: IAuthenticationCallback.onSuccess contains 2 arguments, for now leaving out second one (userConfirmationNecessary) as it would require interface change
-// FIXME: IAuthenticationCallback (and other structured callback objects) trigger more callbacks like IAuthenticationCallback->newPasswordRequired, mfaRequired, ... This is currently not supported
 
 export class CognitoUserPool {
   public origPool: OriginalCognitoUserPool;
@@ -125,17 +130,22 @@ export class CognitoUser {
     );
   }
   public authenticateUser(
-    authenticationDetails: AuthenticationDetails
+    authenticationDetails: AuthenticationDetails,
+    callbacks?: IAuthenticationCallback
   ): Promise<CognitoUserSession> {
     return promisifyStructured(cb =>
-      this.origUser.authenticateUser(authenticationDetails, cb)
+      this.origUser.authenticateUser(authenticationDetails, {
+        ...cb,
+        ...callbacks,
+      })
     );
   }
   public initiateAuth(
-    authenticationDetails: AuthenticationDetails
+    authenticationDetails: AuthenticationDetails,
+    callbacks?: IAuthenticationCallback
   ): Promise<CognitoUserSession> {
     return promisifyStructured(cb =>
-      this.origUser.initiateAuth(authenticationDetails, cb)
+      this.origUser.initiateAuth(authenticationDetails, { ...cb, ...callbacks })
     );
   }
   public confirmRegistration(
@@ -154,12 +164,13 @@ export class CognitoUser {
   }
   public sendCustomChallengeAnswer(
     answerChallenge: any,
+    callbacks?: IAuthenticationCallback,
     clientMetaData?: ClientMetadata
   ): Promise<CognitoUserSession> {
     return promisifyStructured(cb =>
       this.origUser.sendCustomChallengeAnswer(
         answerChallenge,
-        cb,
+        { ...cb, ...callbacks },
         clientMetaData
       )
     );
@@ -177,9 +188,14 @@ export class CognitoUser {
       this.origUser.changePassword(oldPassword, newPassword, cb)
     );
   }
-  public forgotPassword(clientMetaData?: ClientMetadata): Promise<any> {
+  public forgotPassword(
+    callbacks?: {
+      inputVerificationCode?: (data: any) => void;
+    },
+    clientMetaData?: ClientMetadata
+  ): Promise<any> {
     return promisifyStructured(cb =>
-      this.origUser.forgotPassword(cb, clientMetaData)
+      this.origUser.forgotPassword({ ...cb, ...callbacks }, clientMetaData)
     );
   }
   public confirmPassword(
@@ -237,13 +253,18 @@ export class CognitoUser {
   public completeNewPasswordChallenge(
     newPassword: string,
     requiredAttributeData: any,
+    callbacks?: {
+      mfaRequired?: (challengeName: any, challengeParameters: any) => void;
+      customChallenge?: (challengeParameters: any) => void;
+      mfaSetup?: (challengeName: any, challengeParameters: any) => void;
+    },
     clientMetadata?: ClientMetadata
   ): Promise<CognitoUserSession> {
     return promisifyStructured(cb =>
       this.origUser.completeNewPasswordChallenge(
         newPassword,
         requiredAttributeData,
-        cb,
+        { ...cb, ...callbacks },
         clientMetadata
       )
     );
@@ -274,9 +295,14 @@ export class CognitoUser {
       this.origUser.deleteAttributes(attributeList, cb)
     );
   }
-  public getAttributeVerificationCode(name: string): Promise<undefined> {
+  public getAttributeVerificationCode(
+    name: string,
+    callbacks?: {
+      inputVerificationCode?: (data: string) => void | null;
+    }
+  ): Promise<string> {
     return promisifyStructured(cb =>
-      this.origUser.getAttributeVerificationCode(name, cb)
+      this.origUser.getAttributeVerificationCode(name, { ...cb, ...callbacks })
     );
   }
   public deleteUser(): Promise<string> {
@@ -294,10 +320,7 @@ export class CognitoUser {
   public getUserData(params?: any): Promise<UserData> {
     return promisifySimple(cb => this.origUser.getUserData(cb, params));
   }
-  public associateSoftwareToken(callbacks: {
-    associateSecretCode: (secretCode: string) => void;
-    onFailure: (err: any) => void;
-  }) {
+  public associateSoftwareToken() {
     return promisifyStructured(cb =>
       this.origUser.associateSoftwareToken({
         associateSecretCode: cb.onSuccess,
@@ -323,10 +346,17 @@ export class CognitoUser {
     );
   }
   public sendMFASelectionAnswer(
-    answerChallenge: string
+    answerChallenge: string,
+    callbacks?: {
+      mfaRequired?: (challengeName: any, challengeParameters: any) => void;
+      totpRequired?: (challengeName: any, challengeParameters: any) => void;
+    }
   ): Promise<CognitoUserSession> {
     return promisifyStructured(cb =>
-      this.origUser.sendMFASelectionAnswer(answerChallenge, cb)
+      this.origUser.sendMFASelectionAnswer(answerChallenge, {
+        ...cb,
+        ...callbacks,
+      })
     );
   }
   public signOut() {
