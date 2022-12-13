@@ -39,7 +39,6 @@ function promisifyStructured<R>(fn: StructuredCallback) {
 // FIXME: Leaving out arguments that come after callback (like clientMetadata, CognitoUser->sendMFACode.mfaType) because it is not possible easily override
 // FIXME: IAuthenticationCallback.onSuccess contains 2 arguments, for now leaving out second one (userConfirmationNecessary) as it would require interface change
 // FIXME: IAuthenticationCallback (and other structured callback objects) trigger more callbacks like IAuthenticationCallback->newPasswordRequired, mfaRequired, ... This is currently not supported
-// FIXME: CognitoUserPool->getCurrentUser returns original user
 
 export class CognitoUserPool extends OriginalCognitoUserPool {
   public override signUp(
@@ -51,6 +50,14 @@ export class CognitoUserPool extends OriginalCognitoUserPool {
     return promisifySimple<ISignUpResult>(callback =>
       super.signUp(username, password, userAttributes, validationData, callback)
     );
+  }
+  public override getCurrentUser(): CognitoUser | null {
+    const user = super.getCurrentUser();
+    if (!user) {
+      return null;
+    }
+    Object.setPrototypeOf(user, CognitoUser.prototype);
+    return user as CognitoUser;
   }
 }
 
